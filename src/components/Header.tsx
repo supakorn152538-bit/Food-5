@@ -1,5 +1,5 @@
 import React from 'react';
-import { User, Activity, Flame, Utensils, Award, Droplets } from 'lucide-react';
+import { User, Activity, Flame, Utensils, Award, Droplets, Bell, BellRing } from 'lucide-react';
 import { UserProfile, DailyTargets } from '../types/nutrition';
 
 interface HeaderProps {
@@ -9,6 +9,8 @@ interface HeaderProps {
   targets: DailyTargets;
   currentWaterMl?: number;
   targetWaterMl?: number;
+  reminderEnabled?: boolean;
+  secondsUntilNextReminder?: number;
   onOpenProfile: () => void;
 }
 
@@ -19,6 +21,8 @@ export const Header: React.FC<HeaderProps> = ({
   targets,
   currentWaterMl = 0,
   targetWaterMl = 0,
+  reminderEnabled = false,
+  secondsUntilNextReminder = 0,
   onOpenProfile,
 }) => {
   return (
@@ -112,12 +116,26 @@ export const Header: React.FC<HeaderProps> = ({
           {/* Zone 3: Actions & Profile */}
           <div className="flex items-center gap-3">
             <div className="hidden lg:flex items-center gap-3 text-xs text-neutral-600 border-r border-neutral-200/80 pr-3">
-              <div className="flex items-center gap-1.5" title="ปริมาณน้ำดื่มวันนี้">
-                <Droplets className="w-3.5 h-3.5 text-sky-500" />
+              <button
+                onClick={() => setActiveTab('overview')}
+                className="flex items-center gap-1.5 hover:text-sky-700 transition-colors cursor-pointer"
+                title={reminderEnabled ? `การแจ้งเตือนดื่มน้ำเปิดอยู่ (เตือนใน ${Math.ceil(secondsUntilNextReminder / 60)} นาที)` : 'คลิกเพื่อดูและตั้งค่าการดื่มน้ำ'}
+              >
+                <div className="relative">
+                  <Droplets className="w-3.5 h-3.5 text-sky-500" />
+                  {reminderEnabled && (
+                    <span className="absolute -top-1 -right-1 w-1.5 h-1.5 rounded-full bg-sky-500 animate-ping" />
+                  )}
+                </div>
                 <span>
                   น้ำ: <strong className="font-mono-numbers text-neutral-900">{currentWaterMl}</strong>/{targetWaterMl} ml
                 </span>
-              </div>
+                {reminderEnabled && (
+                  <span className="text-[10px] bg-sky-100 text-sky-800 font-semibold px-1.5 py-0.2 rounded-md">
+                    ⏰ {Math.ceil(secondsUntilNextReminder / 60)}น.
+                  </span>
+                )}
+              </button>
               <span className="text-neutral-300">·</span>
               <div className="flex items-center gap-1.5">
                 <span className="w-2 h-2 rounded-full" style={{ backgroundColor: targets.bmiAnalysis.statusColor }} />

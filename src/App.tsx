@@ -5,7 +5,6 @@
 
 import React, { useState, useEffect } from 'react';
 import { Header } from './components/Header';
-import { EnergyComparisonCard } from './components/EnergyComparisonCard';
 import { BmiExerciseCard } from './components/BmiExerciseCard';
 import { WaterTrackerCard } from './components/WaterTrackerCard';
 import { FoodGroupsProportionCard } from './components/FoodGroupsProportionCard';
@@ -17,6 +16,8 @@ import { FoodGroupDetailModal } from './components/FoodGroupDetailModal';
 import { RecipeDetailModal } from './components/RecipeDetailModal';
 import { WeeklyPlannerSection } from './components/WeeklyPlannerSection';
 import { WeeklyScoreAnalyticsSection } from './components/WeeklyScoreAnalyticsSection';
+import { WaterReminderToast } from './components/WaterReminderToast';
+import { waterSound } from './utils/waterSound';
 
 import {
   UserProfile,
@@ -26,6 +27,7 @@ import {
   MealTime,
   MealPlanPreset,
   FoodGroupId,
+  WaterReminderSettings,
 } from './types/nutrition';
 import {
   calculateDailyTargets,
@@ -42,6 +44,16 @@ const DEFAULT_PROFILE: UserProfile = {
   heightCm: 172,
   activityLevel: 'moderate',
   goal: 'balance',
+};
+
+const DEFAULT_REMINDER_SETTINGS: WaterReminderSettings = {
+  enabled: true,
+  intervalMinutes: 60,
+  soundEnabled: true,
+  browserNotificationEnabled: false,
+  quietHoursEnabled: true,
+  quietHoursStart: '22:00',
+  quietHoursEnd: '07:00',
 };
 
 // Initial realistic default meal log for day 1
@@ -188,24 +200,112 @@ export default function App() {
     } catch (e) {}
   }, [waterIntakeMl]);
 
+  // Water Reminder Settings
+  const [reminderSettings, setReminderSettings] = useState<WaterReminderSettings>(() => {
+    try {
+      const saved = localStorage.getItem('nutri5_water_reminder_settings');
+      if (saved) return { ...DEFAULT_REMINDER_SETTINGS, ...JSON.parse(saved) };
+    } catch (e) {}
+    return DEFAULT_REMINDER_SETTINGS;
+  });
+
+  const [secondsUntilNextReminder, setSecondsUntilNextReminder] = useState<number>(() => {
+    return (DEFAULT_REMINDER_SETTINGS.intervalMinutes || 60) * 60;
+  });
+  const [isReminderToastOpen, setIsReminderToastOpen] = useState<boolean>(false);
+
+  useEffect(() => {
+    try {
+      localStorage.setItem('nutri5_water_reminder_settings', JSON.stringify(reminderSettings));
+    } catch (e) {}
+  }, [reminderSettings]);
+
+  // Reset countdown if interval changes or enabled toggles
+  useEffect(() => {
+    if (reminderSettings.enabled) {
+      setSecondsUntilNextReminder(reminderSettings.intervalMinutes * 60);
+    }
+  }, [reminderSettings.intervalMinutes, reminderSettings.enabled]);
+
+  // Check Quiet Hours helper
+  const isQuietHours = () => {
+    if (!reminderSettings.quietHoursEnabled) return false;
+    const now = new Date();
+    const currentMinutes = now.getHours() * 60 + now.getMinutes();
+    const [startH, startM] = (reminderSettings.quietHoursStart || '22:00').split(':').map(Number);
+    const [endH, endM] = (reminderSettings.quietHoursEnd || '07:00').split(':').map(Number);
+    const startMinutes = (startH || 22) * 60 + (startM || 0);
+    const endMinutes = (endH || 7) * 60 + (endM || 0);
+
+    if (startMinutes > endMinutes) {
+      return currentMinutes >= startMinutes || currentMinutes < endMinutes;
+    }
+    return currentMinutes >= startMinutes && currentMinutes < endMinutes;
+  };
+
+  const triggerWaterReminder = (force: boolean = false) => {
+    if (!force && isQuietHours()) {
+      return;
+    }
+
+    if (reminderSettings.soundEnabled) {
+      waterSound.playWaterChime();
+    }
+
+    if (
+      reminderSettings.browserNotificationEnabled &&
+      typeof window !== 'undefined' &&
+      'Notification' in window &&
+      Notification.permission === 'granted'
+    ) {
+      try {
+        new Notification('Nutri5: ได้เวลาจิบน้ำแล้ว 💧', {
+          body: 'ดื่มน้ำ 1 แก้วเพื่อความสดชื่นและรักษาสมดุลของร่างกาย',
+          icon: '/favicon.ico',
+        });
+      } catch (e) {}
+    }
+
+    setIsReminderToastOpen(true);
+  };
+
+  // Timer interval for water reminders
+  useEffect(() => {
+    if (!reminderSettings.enabled) return;
+
+    const timer = setInterval(() => {
+      setSecondsUntilNextReminder((prev) => {
+        if (prev <= 1) {
+          triggerWaterReminder();
+          return reminderSettings.intervalMinutes * 60;
+        }
+        return prev - 1;
+      });
+    }, 1000);
+
+    return () => clearInterval(timer);
+  }, [
+    reminderSettings.enabled,
+    reminderSettings.intervalMinutes,
+    reminderSettings.soundEnabled,
+    reminderSettings.browserNotificationEnabled,
+    reminderSettings.quietHoursEnabled,
+  ]);
+
+  const handleDrinkWaterFromReminder = (amountMl: number) => {
+    setWaterIntakeMl((prev) => prev + amountMl);
+    setIsReminderToastOpen(false);
+    setSecondsUntilNextReminder(reminderSettings.intervalMinutes * 60);
+  };
+
+  const handleSnoozeReminder = (minutes: number) => {
+    setIsReminderToastOpen(false);
+    setSecondsUntilNextReminder(minutes * 60);
+  };
+
   // Derived Calculations
   const targets: DailyTargets = calculateDailyTargets(profile);
   const totals = calculateIntakeTotals(logs);
-
-  const mealBreakdown = {
-    breakfast: logs
-      .filter((l) => l.mealTime === 'breakfast')
-      .reduce((sum, item) => sum + item.calories, 0),
-    lunch: logs
-      .filter((l) => l.mealTime === 'lunch')
-      .reduce((sum, item) => sum + item.calories, 0),
-    dinner: logs
-      .filter((l) => l.mealTime === 'dinner')
-      .reduce((sum, item) => sum + item.calories, 0),
-    snack: logs
-      .filter((l) => l.mealTime === 'snack')
-      .reduce((sum, item) => sum + item.calories, 0),
-  };
 
   const actualFoodGroups = {
     group1_protein: totals.group1_protein,
@@ -346,6 +446,8 @@ export default function App() {
         targets={targets}
         currentWaterMl={waterIntakeMl}
         targetWaterMl={targets.targetWaterMl}
+        reminderEnabled={reminderSettings.enabled}
+        secondsUntilNextReminder={secondsUntilNextReminder}
         onOpenProfile={() => setIsProfileModalOpen(true)}
       />
 
@@ -363,7 +465,7 @@ export default function App() {
                   <span>มาตรฐานกรมอนามัย สูตร 2:1:1</span>
                 </div>
                 <h1 className="text-2xl sm:text-3xl lg:text-4xl font-bold tracking-tight text-white leading-tight text-balance-thai">
-                  รักษาสมดุลโภชนาการอาหาร 5 หมู่ เพื่อสุขภาพที่ยั่งยืน
+                  โภชนาการอาหาร 5 หมู่ เพื่อสุขภาพที่ยั่งยืน
                 </h1>
                 <p className="text-xs sm:text-sm text-emerald-100/80 max-w-xl leading-relaxed">
                   ติดตามพลังงานและสารอาหารที่บริโภคจริงในแต่ละวัน เปรียบเทียบกับความต้องการของร่างกาย (TDEE: {targets.tdee} kcal) และจัดสัดส่วนจานสุขภาพตามหลัก ผัก 2 ส่วน ข้าว 1 ส่วน เนื้อสัตว์ 1 ส่วน
@@ -433,15 +535,12 @@ export default function App() {
               profile={profile}
               onUpdateWater={(amount) => setWaterIntakeMl(amount)}
               onResetWater={() => setWaterIntakeMl(0)}
-            />
-
-            <EnergyComparisonCard
-              actualCalories={totals.calories}
-              targets={targets}
-              macros={totals}
-              mealBreakdown={mealBreakdown}
-              sevenDayHistory={sevenDayHistory}
-              onOpenJournal={() => setActiveTab('journal')}
+              reminderSettings={reminderSettings}
+              onUpdateReminderSettings={(updated) =>
+                setReminderSettings((prev) => ({ ...prev, ...updated }))
+              }
+              secondsUntilNextReminder={secondsUntilNextReminder}
+              onTriggerTestReminder={() => triggerWaterReminder(true)}
             />
 
             <FoodGroupsProportionCard
@@ -502,10 +601,10 @@ export default function App() {
                   </div>
 
                   <h3 className="text-base sm:text-lg font-bold text-neutral-900">
-                    วางแผนล่วงหน้า & สร้างรายการซื้อของอัตโนมัติ
+                    วางแผนล่วงหน้า & คำนวณงบอาหารตลาดไทย 7 วัน
                   </h3>
                   <p className="text-xs text-neutral-600 mt-1 leading-relaxed">
-                    จัดสรรเมนูสุขภาพ 4 มื้อล่วงหน้า สรุปรายการซื้อวัตถุดิบแยกตามแผนก หรือค้นหาเมนูจากวัตถุดิบที่มีในตู้เย็นได้ทันที
+                    จัดสรรเมนูสุขภาพ 4 มื้อล่วงหน้า พร้อมระบบคำนวณงบประมาณอาหาร 7 วันตามราคาตลาดสดไทย (บวกลบไม่เกิน 50 บาท) และสร้างรายการซื้อของอัตโนมัติ
                   </p>
                 </div>
 
@@ -518,9 +617,9 @@ export default function App() {
                   </button>
                   <button
                     onClick={() => setActiveTab('planner')}
-                    className="py-1.5 px-3.5 rounded-lg bg-neutral-900 hover:bg-neutral-800 text-white text-xs font-semibold flex items-center gap-1 transition-colors shadow-xs"
+                    className="py-1.5 px-3.5 rounded-lg bg-neutral-900 hover:bg-neutral-800 text-white text-xs font-semibold flex items-center gap-1 transition-colors shadow-xs cursor-pointer"
                   >
-                    <span>เปิดตารางวางแผน 7 วัน</span>
+                    <span>วางแผน 7 วัน & คำนวณงบ</span>
                     <ArrowRight className="w-3.5 h-3.5" />
                   </button>
                 </div>
@@ -757,6 +856,16 @@ export default function App() {
           }}
         />
       )}
+
+      {/* Water Reminder Notification Floating Toast */}
+      <WaterReminderToast
+        isOpen={isReminderToastOpen}
+        onClose={() => setIsReminderToastOpen(false)}
+        onDrinkWater={handleDrinkWaterFromReminder}
+        onSnooze={handleSnoozeReminder}
+        currentWaterMl={waterIntakeMl}
+        targetWaterMl={targets.targetWaterMl}
+      />
     </div>
   );
 }

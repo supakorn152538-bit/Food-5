@@ -13,6 +13,7 @@ import {
   getDefaultWeeklyMealPlan,
   generateGroceryListFromWeeklyPlan,
 } from '../utils/mealPlannerHelpers';
+import { ThaiBudgetCalculator } from './ThaiBudgetCalculator';
 import {
   Calendar,
   ShoppingCart,
@@ -29,6 +30,7 @@ import {
   Trash2,
   ArrowRight,
   Filter,
+  Coins,
 } from 'lucide-react';
 
 interface WeeklyPlannerSectionProps {
@@ -49,7 +51,7 @@ export const WeeklyPlannerSection: React.FC<WeeklyPlannerSectionProps> = ({
   });
 
   const [activeDay, setActiveDay] = useState<DayOfWeek>('mon');
-  const [activeViewMode, setActiveViewMode] = useState<'planner' | 'grocery'>('planner');
+  const [activeViewMode, setActiveViewMode] = useState<'planner' | 'grocery' | 'budget'>('planner');
   const [groceryList, setGroceryList] = useState<GroceryItem[]>(() => {
     try {
       const saved = localStorage.getItem('nutri5_grocery_list');
@@ -87,6 +89,18 @@ export const WeeklyPlannerSection: React.FC<WeeklyPlannerSectionProps> = ({
     try {
       localStorage.setItem('nutri5_grocery_list', JSON.stringify(updated));
     } catch (e) {}
+  };
+
+  const handleAppendGroceryItems = (newItems: GroceryItem[]) => {
+    setGroceryList((prev) => {
+      // Filter out existing market items, then prepend newly exported ones
+      const nonMarket = prev.filter((item) => !item.id.startsWith('mkt_'));
+      const combined = [...newItems, ...nonMarket];
+      try {
+        localStorage.setItem('nutri5_grocery_list', JSON.stringify(combined));
+      } catch (e) {}
+      return combined;
+    });
   };
 
   const handleCopyGroceryList = () => {
@@ -141,40 +155,40 @@ export const WeeklyPlannerSection: React.FC<WeeklyPlannerSectionProps> = ({
     <div className="space-y-6">
       {/* Top Banner & Mode Switcher */}
       <div className="wellness-card rounded-2xl p-6 sm:p-7">
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-neutral-100 pb-5">
+        <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4 border-b border-neutral-100 pb-5">
           <div>
             <div className="flex items-center gap-2 text-xs text-emerald-800/80 font-medium mb-1">
               <span>เครื่องมือวางแผนและจัดการอาหาร</span>
               <span aria-hidden="true">·</span>
               <span>ตาราง 7 วัน</span>
               <span aria-hidden="true">·</span>
-              <span>คำนวณวัตถุดิบอัตโนมัติ</span>
+              <span>คำนวณวัตถุดิบ & งบประมาณตลาดไทย</span>
             </div>
             <h2 className="text-xl sm:text-2xl font-bold text-neutral-900 tracking-tight flex items-center gap-2.5">
               <div className="w-8 h-8 rounded-lg bg-emerald-100 text-emerald-800 flex items-center justify-center shrink-0">
                 <Calendar className="w-5 h-5 text-emerald-700" />
               </div>
-              <span>ตารางวางแผนมื้ออาหารล่วงหน้า & รายการซื้อวัตถุดิบ (Weekly Planner)</span>
+              <span>วางแผน 7 วัน & ซื้อของ (Weekly Planner & Thai Budget)</span>
             </h2>
           </div>
 
-          <div className="flex items-center gap-2 self-start sm:self-auto">
-            <div className="flex items-center p-1 bg-neutral-100 rounded-xl text-xs font-semibold">
+          <div className="flex items-center gap-2 self-start lg:self-auto flex-wrap">
+            <div className="flex items-center p-1 bg-neutral-100 rounded-xl text-xs font-semibold flex-wrap">
               <button
                 onClick={() => setActiveViewMode('planner')}
-                className={`py-1.5 px-3 rounded-lg transition-colors flex items-center gap-1.5 ${
+                className={`py-1.5 px-3 rounded-lg transition-colors flex items-center gap-1.5 cursor-pointer ${
                   activeViewMode === 'planner'
                     ? 'bg-white text-neutral-900 shadow-xs'
                     : 'text-neutral-600 hover:text-neutral-900'
                 }`}
               >
                 <Calendar className="w-3.5 h-3.5 text-emerald-600" />
-                <span>ตารางมื้ออาหาร 7 วัน</span>
+                <span>ตารางมื้อ 7 วัน</span>
               </button>
 
               <button
                 onClick={() => setActiveViewMode('grocery')}
-                className={`py-1.5 px-3 rounded-lg transition-colors flex items-center gap-1.5 ${
+                className={`py-1.5 px-3 rounded-lg transition-colors flex items-center gap-1.5 cursor-pointer ${
                   activeViewMode === 'grocery'
                     ? 'bg-white text-neutral-900 shadow-xs'
                     : 'text-neutral-600 hover:text-neutral-900'
@@ -182,6 +196,21 @@ export const WeeklyPlannerSection: React.FC<WeeklyPlannerSectionProps> = ({
               >
                 <ShoppingCart className="w-3.5 h-3.5 text-emerald-600" />
                 <span>รายการซื้อของ ({groceryList.length})</span>
+              </button>
+
+              <button
+                onClick={() => setActiveViewMode('budget')}
+                className={`py-1.5 px-3 rounded-lg transition-colors flex items-center gap-1.5 cursor-pointer ${
+                  activeViewMode === 'budget'
+                    ? 'bg-white text-emerald-950 shadow-xs font-bold'
+                    : 'text-neutral-600 hover:text-neutral-900'
+                }`}
+              >
+                <Coins className="w-3.5 h-3.5 text-amber-500" />
+                <span>คำนวณงบ 7 วัน (ตลาดไทย)</span>
+                <span className="text-[10px] bg-amber-100 text-amber-800 font-bold px-1.5 py-0.2 rounded-full">
+                  ใหม่
+                </span>
               </button>
             </div>
 
@@ -454,6 +483,16 @@ export const WeeklyPlannerSection: React.FC<WeeklyPlannerSectionProps> = ({
                 );
               })}
             </div>
+          </div>
+        )}
+
+        {/* View Mode 3: Thai Food Budget Calculator (7 Days Market Price Engine) */}
+        {activeViewMode === 'budget' && (
+          <div className="mt-6">
+            <ThaiBudgetCalculator
+              onExportToGrocery={handleAppendGroceryItems}
+              onSwitchToGroceryTab={() => setActiveViewMode('grocery')}
+            />
           </div>
         )}
       </div>

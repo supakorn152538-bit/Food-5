@@ -233,3 +233,15 @@ export interface GamificationBadge {
   unlockedDate?: string;
 }
 
+export interface WaterReminderSettings {
+  enabled: boolean;
+  intervalMinutes: number; // e.g., 30, 45, 60, 90, 120
+  soundEnabled: boolean;
+  browserNotificationEnabled: boolean;
+  quietHoursEnabled: boolean;
+  quietHoursStart: string; // '22:00'
+  quietHoursEnd: string;   // '07:00'
+  lastRemindedTimestamp?: number;
+}
+
+
